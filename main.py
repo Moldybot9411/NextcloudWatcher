@@ -1,9 +1,22 @@
 from nc_py_api import Nextcloud
 from dotenv import load_dotenv
+from google import genai
+
+import shutil
 import json
 import os
+import time
 
 load_dotenv()
+
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# for m in gemini_client.models.list():
+#     for action in m.supported_actions:
+#         if action == "generateContent":
+#             print(m.name)
+
+# quit()
 
 def compare_map(old_map, new_map):
     new_items = {
@@ -12,13 +25,12 @@ def compare_map(old_map, new_map):
     }
 
     def is_directory(node):
-        return isinstance(node, dict) and any(isinstance(v, dict) for v in node.values())
+        return isinstance(node, dict) and node.get("is_dir", False)
 
     def is_file(node):
-        return isinstance(node, dict) and "full_path" in node and not is_directory(node)
+        return isinstance(node, dict) and not is_directory(node)
 
     def collect_all_recursive(node):
-        """Erfasst rekursiv alle Inhalte eines neuen Verzeichnisses."""
         if not isinstance(node, dict):
             return
 
@@ -49,9 +61,6 @@ def compare_map(old_map, new_map):
 
     compare_recursive(old_map, new_map)
     
-    new_items["directories"] = sorted(list(set(filter(None, new_items["directories"]))))
-    new_items["files"] = sorted(list(set(filter(None, new_items["files"]))))
-    
     return new_items
 
 def build_map(directory: str) -> object:
@@ -73,24 +82,77 @@ def build_map(directory: str) -> object:
 
         return cur_folder
   
-    return list_dir(directory);
+    return list_dir(directory)
+
+def cleanup():
+    try:
+        os.remove("./Aufgabe.zip")
+        os.remove("./download")
+    except:
+        return
+
+def wait():
+    print("Waiting for 10 hrs...")
+    time.sleep(36000)
 
 if __name__ == "__main__":
     nc = Nextcloud(nextcloud_url = os.getenv("NEXTCLOUD_URL"), nc_auth_user = os.getenv("NEXTCLOUD_USER"), nc_auth_pass = os.getenv("NEXTCLOUD_PASS"))
 
-    
+    if not os.path.exists("./map.json"):
+        new_map = build_map("e2fi4/BFK-B/")
+        with open("map.json", "w", encoding="utf8") as fs:
+            fs.write(json.dumps(new_map, indent=4))
 
-    print("Files on the instance for the selected user:")
-    full_map = build_map("e2fi4/BFK-B/")
+    while True:
+        new_map = build_map("e2fi4/BFK-B/")
+        old_map = {}
+        diff = {}
 
-    with open("map.json", "r", encoding="utf-8")as fs:
-        old_map = json.load(fs)
-        res = compare_map(old_map, full_map)
-        print(res)
+        with open("map.json", "r", encoding="utf-8")as fs:
+            old_map = json.load(fs)
+            diff = compare_map(old_map, new_map)
+            print(diff)
 
-    quit()
-    with open("map.json", "w", encoding="utf8") as fs:
-        fs.write(json.dumps(full_map, indent=4))
+        if len(diff["files"]) == 0 and len(diff["directories"]) == 0:
+            print("No new files uploaded!")
+            cleanup()
+            wait()
+            continue
+        
+        with open("map.json", "w", encoding="utf8") as fs:
+            fs.write(json.dumps(new_map, indent=4))
 
-    nc.files.download_directory_as_zip
-    exit(0)
+        os.makedirs("./download", exist_ok=True)
+
+        for new_file in diff["files"]:
+            filename = new_file.split("/")[-1]
+
+            with open(f"download/{filename}", "wb") as fs:
+                fs.write(nc.files.download(new_file))
+
+        shutil.make_archive("Aufgabe", 'zip', "./download")
+
+        uploading_file = gemini_client.files.upload(file="./Aufgabe.zip", config={"mime_type": "text/plain"})
+
+        result = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                uploading_file,
+                "\n\n",
+                """
+                Dieser Ordner enthält eventuell Hausaufgaben.
+                Falls du hier Hausaufgaben erkennst, arbeite den Arbeitsauftrag heraus und verarbeite ihn zu einer vollständigen Lösung.
+                Gib mir die pure Lösung zu einzelnen Aufgaben, ohne Rückfragen.
+                Falls kein Arbeitsauftrag vorhanden zu sein scheint, schreibe einfach nur 'kamma nix machen'.
+                """,
+            ],
+        )
+
+        with open("./result.txt", "w", encoding="utf-8") as fh:
+            fh.write(result.text)
+
+        print(f"{result.text}")
+
+        cleanup()
+
+        wait()
