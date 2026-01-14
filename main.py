@@ -1,15 +1,18 @@
 from nc_py_api import Nextcloud
 from dotenv import load_dotenv
 from google import genai
+from markitdown import MarkItDown
 
-import shutil
 import json
 import os
 import time
+import markdown
 
 load_dotenv()
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+nc = Nextcloud(nextcloud_url = os.getenv("NEXTCLOUD_URL"), nc_auth_user = os.getenv("NEXTCLOUD_USER"), nc_auth_pass = os.getenv("NEXTCLOUD_PASS"))
+md = MarkItDown()
 
 # for m in gemini_client.models.list():
 #     for action in m.supported_actions:
@@ -96,8 +99,6 @@ def wait():
     time.sleep(36000)
 
 if __name__ == "__main__":
-    nc = Nextcloud(nextcloud_url = os.getenv("NEXTCLOUD_URL"), nc_auth_user = os.getenv("NEXTCLOUD_USER"), nc_auth_pass = os.getenv("NEXTCLOUD_PASS"))
-
     if not os.path.exists("./map.json"):
         new_map = build_map("e2fi4/BFK-B/")
         with open("map.json", "w", encoding="utf8") as fs:
@@ -130,19 +131,35 @@ if __name__ == "__main__":
             with open(f"download/{filename}", "wb") as fs:
                 fs.write(nc.files.download(new_file))
 
-        shutil.make_archive("Aufgabe", 'zip', "./download")
+        uploading_files = []
 
-        uploading_file = gemini_client.files.upload(file="./Aufgabe.zip", config={"mime_type": "text/plain"})
+        if os.path.exists("./download"):
+            for file in os.listdir("./download"):
+                try:
+                    md_file = md.convert(f"./download/{file}")
+                    uploading_files.append(f"{md_file.title}:\n")
+                    uploading_files.append(md_file.text_content)
+                except Exception as e:
+                    print(e)
+                
+                try:
+                    gem_file = gemini_client.files.upload(file=f"./download/{file}", config={"mime_type": "text/plain"})
+                    uploading_files.append(gem_file)
+                except Exception as e:
+                    print(e)
+
 
         result = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash-preview",
             contents=[
-                uploading_file,
+                *uploading_files,
                 "\n\n",
                 """
-                Dieser Ordner enthält eventuell Hausaufgaben.
+                Diese Datei/en enthält/enthalten eventuell Hausaufgaben.
                 Falls du hier Hausaufgaben erkennst, arbeite den Arbeitsauftrag heraus und verarbeite ihn zu einer vollständigen Lösung.
                 Gib mir die pure Lösung zu einzelnen Aufgaben, ohne Rückfragen.
+                Schreibe die Namen der Dateien an den Anfang deiner Antwort.
+                Ich kenne den Kontext der Hausaufgaben nicht, erkläre mir also kurz und knapp die Kernthemen.
                 Falls kein Arbeitsauftrag vorhanden zu sein scheint, schreibe einfach nur 'kamma nix machen'.
                 """,
             ],
@@ -151,7 +168,10 @@ if __name__ == "__main__":
         with open("./result.txt", "w", encoding="utf-8") as fh:
             fh.write(result.text)
 
-        print(f"{result.text}")
+        rendered = markdown.markdown(result.text, extensions=['markdown.extensions.tables'])
+
+        with open("./output.html", "w", encoding="utf-8") as fh:
+            fh.write(rendered)
 
         cleanup()
 
