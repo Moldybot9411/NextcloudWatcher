@@ -6,3 +6,4 @@ result.txt
 output.html
 venv/
 data/
+__pycache__
