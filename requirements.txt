@@ -1,5 +1,5 @@
 Markdown==3.10.2
-markitdown==0.1.5
+markitdown[all]==0.1.5
 nc_py_api==0.24.0
 openrouter==0.6.0
 premailer==3.10.0
