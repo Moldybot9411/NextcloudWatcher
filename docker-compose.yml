@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  nextcloud-scanner:
+    build: .
+    container_name: nextcloud-scanner
+    restart: unless-stopped
+    environment:
+      - NEXTCLOUD_URL=${NEXTCLOUD_URL}
+      - NEXTCLOUD_USER=${NEXTCLOUD_USER}
+      - NEXTCLOUD_PASS=${NEXTCLOUD_PASS}
+      - NEXTCLOUD_DIR=${NEXTCLOUD_DIR}
+      - EMAIL_ADDRESS=${EMAIL_ADDRESS}
+      - ADMIN_MAIL=${ADMIN_MAIL}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - GOOGLE_APP_PASSWORD=${GOOGLE_APP_PASSWORD}
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    networks:
+      - nextcloud-network
+
+networks:
+  nextcloud-network:
+    driver: bridge
