@@ -207,9 +207,8 @@ def convert_downloads_to_md() -> list[str]:
         download_path = os.path.join(DATA_DIR, "download")
         if os.path.exists(download_path):
             for file in os.listdir(download_path):
+                element = ""
                 try:
-                    element = ""
-
                     md_file = md.convert(f"{download_path}/{file}")
 
                     element = f"```text\nFilename: {md_file.title}:\n"
@@ -217,7 +216,7 @@ def convert_downloads_to_md() -> list[str]:
                 except Exception as e:
                     logger.error("ERROR CONVERTING %s to MD", file)
 
-                    element = "```\nFilename: {file}\nThis File could not be converted to Markdown. Please provide this information in your output."
+                    element = f"```\nFilename: {file}\nThis File could not be converted to Markdown. Please provide this information in your output."
 
                 result.append(element)
     except Exception as e:
@@ -344,7 +343,7 @@ if __name__ == "__main__":
         with open(map_file, "w", encoding="utf8") as fs:
             fs.write(json.dumps(new_map, indent=4))
 
-
+    cleanup()
     while True:
         emails = initialize_mails()
         new_map = build_map(os.getenv("NEXTCLOUD_DIR"))
